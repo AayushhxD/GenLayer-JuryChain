@@ -4,11 +4,13 @@ import type React from "react"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Loader2, Upload } from "lucide-react"
+import { Loader2, Upload, AlertCircle } from "lucide-react"
+import { sanitizeInput, validateCaseSubmission, checkRateLimit } from "@/lib/security"
 
 export function SubmitForm() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
+  const [errors, setErrors] = useState<string[]>([])
   const [formData, setFormData] = useState({
     claimantName: "",
     respondentName: "",
@@ -23,22 +25,56 @@ export function SubmitForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setErrors([])
+
+    // Rate limiting check (max 3 submissions per 5 minutes)
+    if (!checkRateLimit('case_submission', 3, 5 * 60 * 1000)) {
+      setErrors(['Too many submissions. Please wait 5 minutes before submitting again.'])
+      return
+    }
+
+    // Sanitize inputs
+    const sanitizedData = {
+      claimant: sanitizeInput(formData.claimantName),
+      respondent: sanitizeInput(formData.respondentName),
+      description: sanitizeInput(formData.description),
+      evidenceUrl: formData.evidenceUrl.trim(),
+    }
+
+    // Validate submission
+    const validation = validateCaseSubmission(sanitizedData)
+    if (!validation.valid) {
+      setErrors(validation.errors)
+      return
+    }
+
     setIsLoading(true)
 
     try {
       const response = await fetch("/api/submitCase", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        headers: { 
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest" // CSRF protection
+        },
+        body: JSON.stringify({
+          claimantName: sanitizedData.claimant,
+          respondentName: sanitizedData.respondent,
+          description: sanitizedData.description,
+          evidenceUrl: sanitizedData.evidenceUrl,
+        }),
       })
 
-      if (!response.ok) throw new Error("Failed to submit case")
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || "Failed to submit case")
+      }
 
       const data = await response.json()
       router.push(`/verdict/${data.caseId}`)
     } catch (error) {
       console.error("Error submitting case:", error)
-      alert("Failed to submit dispute. Please try again.")
+      setErrors([error instanceof Error ? error.message : "Failed to submit dispute. Please try again."])
     } finally {
       setIsLoading(false)
     }
@@ -53,6 +89,23 @@ export function SubmitForm() {
         <h2 className="text-2xl font-bold gradient-text mb-2">New Dispute Submission</h2>
         <p className="text-sm text-slate-400">Fill in all the details about your dispute</p>
       </div>
+
+      {/* Error Messages */}
+      {errors.length > 0 && (
+        <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-4 animate-fade-in">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-red-400 mb-2">Please fix the following errors:</h3>
+              <ul className="space-y-1">
+                {errors.map((error, index) => (
+                  <li key={index} className="text-sm text-red-300">• {error}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-6">
         <div className="animate-fade-in-up animation-delay-100">

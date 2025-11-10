@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { storeCase } from "@/lib/case-storage"
+import { sanitizeInput, validateCaseSubmission } from "@/lib/security"
 
 interface JurorVerdict {
   name: string
@@ -56,20 +57,44 @@ function computeConsensus(jurors: JurorVerdict[]): { verdict: string; reasoning:
 
 export async function POST(request: NextRequest) {
   try {
+    // Verify CSRF header
+    const requestedWith = request.headers.get('X-Requested-With')
+    if (requestedWith !== 'XMLHttpRequest') {
+      return NextResponse.json({ error: "Invalid request" }, { status: 403 })
+    }
+
     const body: SubmitCaseBody = await request.json()
+
+    // Sanitize inputs
+    const sanitizedData = {
+      claimant: sanitizeInput(body.claimantName || ""),
+      respondent: sanitizeInput(body.respondentName || ""),
+      description: sanitizeInput(body.description || ""),
+      evidenceUrl: body.evidenceUrl?.trim() || "",
+    }
+
+    // Validate submission
+    const validation = validateCaseSubmission(sanitizedData)
+    if (!validation.valid) {
+      return NextResponse.json({ 
+        error: "Validation failed", 
+        details: validation.errors 
+      }, { status: 400 })
+    }
+
     const caseId = `CASE-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
     // Get AI verdicts
-    const jurors = await getAIVerdicts(body.description)
+    const jurors = await getAIVerdicts(sanitizedData.description)
     const { verdict, reasoning } = computeConsensus(jurors)
 
-    // Store case data
+    // Store case data with sanitized inputs
     const caseData = {
       caseId,
-      claimant: body.claimantName,
-      respondent: body.respondentName,
-      description: body.description,
-      evidenceUrl: body.evidenceUrl,
+      claimant: sanitizedData.claimant,
+      respondent: sanitizedData.respondent,
+      description: sanitizedData.description,
+      evidenceUrl: sanitizedData.evidenceUrl,
       jurors,
       finalVerdict: verdict,
       reasoning,

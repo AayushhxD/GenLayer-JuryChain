@@ -160,13 +160,28 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const sendPayment = async (to: string, amount: string): Promise<string | null> => {
     if (!window.ethereum || !address) {
-      alert("Please connect your wallet first")
-      return null
+      throw new Error("Please connect your wallet first")
+    }
+
+    // Validate recipient address format
+    if (!/^0x[a-fA-F0-9]{40}$/.test(to)) {
+      throw new Error("Invalid recipient address format")
+    }
+
+    // Validate amount
+    const amountNum = parseFloat(amount)
+    if (isNaN(amountNum) || amountNum <= 0) {
+      throw new Error("Invalid payment amount")
+    }
+
+    // Check balance
+    if (balance && amountNum > parseFloat(balance)) {
+      throw new Error("Insufficient balance")
     }
 
     try {
       // Convert ETH to wei (hex)
-      const amountInWei = (parseFloat(amount) * 1e18).toString(16)
+      const amountInWei = (amountNum * 1e18).toString(16)
 
       const txHash = await window.ethereum.request({
         method: "eth_sendTransaction",
@@ -175,6 +190,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             from: address,
             to: to,
             value: `0x${amountInWei}`,
+            gas: "0x5208", // 21000 in hex (standard ETH transfer)
           },
         ],
       })
@@ -185,11 +201,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     } catch (error: any) {
       console.error("Error sending payment:", error)
       if (error.code === 4001) {
-        alert("Transaction cancelled by user")
+        throw new Error("Transaction cancelled by user")
+      } else if (error.code === -32603) {
+        throw new Error("Transaction failed. Please check your balance and try again.")
       } else {
-        alert("Failed to send payment. Please try again.")
+        throw new Error(error.message || "Failed to send payment")
       }
-      return null
     }
   }
 

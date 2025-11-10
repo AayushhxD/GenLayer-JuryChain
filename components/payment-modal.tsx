@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { useWallet } from "@/contexts/wallet-context"
-import { X, Send, Loader2, CheckCircle2 } from "lucide-react"
+import { X, Send, Loader2, CheckCircle2, AlertCircle } from "lucide-react"
+import { isValidEthAddress, isValidPaymentAmount, checkRateLimit } from "@/lib/security"
 
 interface PaymentModalProps {
   isOpen: boolean
@@ -16,6 +17,7 @@ export function PaymentModal({ isOpen, onClose, defaultRecipient }: PaymentModal
   const [amount, setAmount] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [txHash, setTxHash] = useState<string | null>(null)
+  const [error, setError] = useState<string>("")
 
   // Update recipient when defaultRecipient changes
   useEffect(() => {
@@ -28,8 +30,28 @@ export function PaymentModal({ isOpen, onClose, defaultRecipient }: PaymentModal
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
+    setError("")
     setTxHash(null)
+
+    // Rate limiting (max 5 payments per minute)
+    if (!checkRateLimit('payment', 5, 60 * 1000)) {
+      setError('Too many payment attempts. Please wait a minute.')
+      return
+    }
+
+    // Validate recipient address
+    if (!isValidEthAddress(recipient)) {
+      setError('Invalid Ethereum address format')
+      return
+    }
+
+    // Validate amount
+    if (!balance || !isValidPaymentAmount(amount, balance)) {
+      setError('Invalid payment amount or insufficient balance')
+      return
+    }
+
+    setIsLoading(true)
 
     try {
       const hash = await sendPayment(recipient, amount)
@@ -38,9 +60,12 @@ export function PaymentModal({ isOpen, onClose, defaultRecipient }: PaymentModal
         setTimeout(() => {
           handleClose()
         }, 3000)
+      } else {
+        setError('Transaction failed. Please try again.')
       }
     } catch (error) {
       console.error("Payment error:", error)
+      setError(error instanceof Error ? error.message : 'Payment failed. Please try again.')
     } finally {
       setIsLoading(false)
     }
@@ -50,6 +75,7 @@ export function PaymentModal({ isOpen, onClose, defaultRecipient }: PaymentModal
     setRecipient("")
     setAmount("")
     setTxHash(null)
+    setError("")
     setIsLoading(false)
     onClose()
   }
@@ -80,6 +106,16 @@ export function PaymentModal({ isOpen, onClose, defaultRecipient }: PaymentModal
             Available: {balance ? `${balance} ETH` : "Loading..."}
           </p>
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-500/50 bg-red-500/10 p-3 animate-fade-in">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
+              <p className="text-sm text-red-300">{error}</p>
+            </div>
+          </div>
+        )}
 
         {txHash ? (
           /* Success State */
