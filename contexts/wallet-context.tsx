@@ -15,6 +15,7 @@ interface WalletContextType {
   sendPayment: (to: string, amount: string) => Promise<string | null>
   refreshBalance: () => Promise<void>
   switchToTestnet: () => Promise<void>
+  switchToSepoliaETH: () => Promise<void>
   isTestnet: boolean
 }
 
@@ -216,20 +217,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Add Base Sepolia (Base Testnet)
   const switchToTestnet = async () => {
     if (!window.ethereum) {
       alert("MetaMask is not installed!")
       return
     }
-
     try {
-      // Try to switch to Base Sepolia
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: EXPECTED_CHAIN_ID }],
       })
     } catch (error: any) {
-      // If chain doesn't exist, add it
       if (error.code === 4902) {
         try {
           await window.ethereum.request({
@@ -257,6 +256,46 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Add Ethereum Sepolia (SepoliaETH)
+  const switchToSepoliaETH = async () => {
+    const SEPOLIA_CHAIN_ID = '0xaa36a7' // 11155111
+    if (!window.ethereum) {
+      alert("MetaMask is not installed!")
+      return
+    }
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: SEPOLIA_CHAIN_ID }],
+      })
+    } catch (error: any) {
+      if (error.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: SEPOLIA_CHAIN_ID,
+              chainName: 'Ethereum Sepolia',
+              nativeCurrency: {
+                name: 'SepoliaETH',
+                symbol: 'SepoliaETH',
+                decimals: 18
+              },
+              rpcUrls: ['https://rpc.sepolia.org'],
+              blockExplorerUrls: ['https://sepolia.etherscan.io']
+            }],
+          })
+        } catch (addError) {
+          console.error("Error adding SepoliaETH network:", addError)
+          alert("Failed to add SepoliaETH network")
+        }
+      } else {
+        console.error("Error switching to SepoliaETH:", error)
+        alert("Failed to switch to SepoliaETH network")
+      }
+    }
+  }
+
   const isCorrectNetwork = network === EXPECTED_CHAIN_ID
   const isTestnet = network === EXPECTED_CHAIN_ID
 
@@ -275,6 +314,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         sendPayment,
         refreshBalance,
         switchToTestnet,
+        switchToSepoliaETH, // <--- Expose SepoliaETH switcher
         isTestnet,
       }}
     >

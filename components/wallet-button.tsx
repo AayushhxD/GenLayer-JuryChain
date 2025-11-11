@@ -16,7 +16,9 @@ export function WalletButton() {
     balance,
     network,
     isCorrectNetwork,
-    refreshBalance
+    refreshBalance,
+    switchToTestnet,
+    switchToSepoliaETH
   } = useWallet()
   const [isMounted, setIsMounted] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -114,6 +116,22 @@ export function WalletButton() {
           title="Send Payment"
         >
           <Send className="h-4 w-4" />
+        </button>
+
+        <button
+          onClick={switchToTestnet}
+          className="flex items-center gap-2 rounded-lg border border-blue-500/50 bg-blue-500/10 px-3 py-2 text-sm font-medium text-blue-400 transition-colors hover:bg-blue-500/20"
+          title="Switch to Base Sepolia Testnet"
+        >
+          <span>Switch to Testnet</span>
+        </button>
+
+        <button
+          onClick={switchToSepoliaETH}
+          className="flex items-center gap-2 rounded-lg border border-purple-500/50 bg-purple-500/10 px-3 py-2 text-sm font-medium text-purple-400 transition-colors hover:bg-purple-500/20"
+          title="Switch to SepoliaETH"
+        >
+          <span>Switch to SepoliaETH</span>
         </button>
 
         <button
